@@ -34,4 +34,6 @@ app.listen(app.get("port"), function () {
   console.log("Express server listening on port 3001");
 });
 
-module.exports = app;
+module.exports = {
+  app,
+};

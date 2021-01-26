@@ -38,8 +38,16 @@ router.post("/", async function (req, res) {
       accountType: number;
     };
 
-    const accounts = await knex("account").insert(data).returning("*");
-    res.json(accounts[0].accountId);
+    const doesPersonExists = await knex("person")
+      .where("personId", data.personId)
+      .first();
+
+    if (doesPersonExists) {
+      const accounts = await knex("account").insert(data).returning("*");
+      res.json(accounts[0].accountId);
+    } else {
+      res.status(404).send("The person id doesn't exists");
+    }
   } catch (err) {
     console.error(err);
     res.sendStatus(500);
@@ -80,22 +88,26 @@ router.put("/deposit", async function (req, res) {
       accountId: number;
     };
 
-    const { activeFlag } = await knex("account")
+    const account = await knex("account")
       .where("accountId", data.accountId)
       .select("activeFlag")
       .first();
 
-    if (activeFlag) {
-      await knex("transactions").insert(data);
-
-      const accounts = await knex("account")
-        .where("accountId", data.accountId)
-        .increment("balance", data.value)
-        .returning("*");
-
-      res.json(+accounts[0].balance);
+    if (!account) {
+      res.status(404).send("The account doesn't exists");
     } else {
-      res.status(400).send("Cannot perform operations on this account");
+      if (account.activeFlag) {
+        await knex("transactions").insert(data);
+
+        const accounts = await knex("account")
+          .where("accountId", data.accountId)
+          .increment("balance", data.value)
+          .returning("*");
+
+        res.json(+accounts[0].balance);
+      } else {
+        res.status(400).send("Cannot perform operations on this account");
+      }
     }
   } catch (err) {
     console.error(err);
@@ -130,7 +142,11 @@ router.get("/balance_inquiry/:accountId", async function (req, res) {
       .select("balance")
       .first();
 
-    res.json(+account.balance);
+    if (account) {
+      res.json(+account.balance);
+    } else {
+      res.status(404).send("The account doesn't exists");
+    }
   } catch (err) {
     console.error(err);
     res.sendStatus(500);
@@ -176,32 +192,39 @@ router.put("/withdrawal", async function (req, res) {
       .select("dailyWithdrawalLimit", "activeFlag")
       .first();
 
-    if (account.activeFlag) {
-      const transactions = await knex("transactions")
-        .where("transactionDate", new Date().toISOString().substring(0, 10))
-        .andWhere("accountId", accountId)
-        .andWhere("value", "<", 0)
-        .sum("value");
+    if (account) {
+      if (account.activeFlag) {
+        const transactions = await knex("transactions")
+          .whereRaw(`"transactionDate"::date = ?`, [
+            new Date().toISOString().substring(0, 10),
+          ])
+          .andWhere("accountId", accountId)
+          .andWhere("value", "<", 0)
+          .sum("value");
 
-      if (
-        Math.abs(+transactions[0].sum + -value) > +account.dailyWithdrawalLimit
-      ) {
-        res.status(400).send("Exceeds daily withdrawal!");
+        if (
+          Math.abs(+transactions[0].sum + -value) >
+          +account.dailyWithdrawalLimit
+        ) {
+          res.status(400).send("Exceeds daily withdrawal!");
+        } else {
+          await knex("transactions").insert({
+            accountId,
+            value: -value,
+          });
+
+          const account = await knex("account")
+            .decrement("balance", value)
+            .where("accountId", accountId)
+            .returning("*");
+
+          res.json(+account[0].balance);
+        }
       } else {
-        await knex("transactions").insert({
-          accountId,
-          value: -value,
-        });
-
-        const account = await knex("account")
-          .decrement("balance", value)
-          .where("accountId", accountId)
-          .returning("*");
-
-        res.json(account[0].balance);
+        res.status(400).send("Cannot perform operations on this account");
       }
     } else {
-      res.status(400).send("Cannot perform operations on this account");
+      res.status(404).send("The account doesn't exists");
     }
   } catch (err) {
     console.error(err);
@@ -243,7 +266,7 @@ router.put("/block", async function (req, res) {
       })
       .where("accountId", accountId);
 
-    res.json("The account has been blocked!");
+    res.send("The account has been blocked!");
   } catch (err) {
     console.error(err);
     res.sendStatus(500);

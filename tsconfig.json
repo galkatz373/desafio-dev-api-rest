@@ -8,7 +8,7 @@
     "moduleResolution": "node",
     "lib": ["es2018", "dom"],
     "module": "commonjs",
-    "target": "es2018",
+    "target": "esnext",
     "baseUrl": ".",
     "emitDecoratorMetadata": true,
     "paths": {
@@ -17,6 +17,6 @@
     "typeRoots": ["node_modules/@types", "src/types"],
     "outDir": "./dist"
   },
-  "include": ["./**/*.ts"],
+  "include": ["./**/*.ts", "./**/*.test.ts"],
   "exclude": ["node_modules"]
 }
